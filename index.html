@@ -171,6 +171,85 @@
 				height: 100%;
 				touch-action: none;
 			}
+			#canvasLeft {
+				display: block;
+				position: absolute;
+				top: 0;
+				left: 0;
+				width: 50%;
+				height: 100%;
+				touch-action: none;
+			}
+			#canvasRight {
+				display: block;
+				position: absolute;
+				top: 0;
+				left: 50%;
+				width: 50%;
+				height: 100%;
+				touch-action: none;
+			}
+			/* Compare mode overlay and clipping */
+			body.compare #canvasLeft, body.compare #canvasRight {
+				left: 0;
+				width: 100%;
+			}
+			body.compare #canvasRight {
+				z-index: 3;
+				clip-path: inset(0 calc(100% - var(--sliderX, 50%)) 0 0);
+				filter: grayscale(1);
+			}
+			#compareBtn {
+				position: absolute;
+				top: 10px;
+				left: 50%;
+				transform: translateX(-50%);
+				z-index: 1000;
+				background: rgba(0,0,0,0.5);
+				border: 1px solid #fff;
+				color: #fff;
+				padding: 6px 10px;
+				cursor: pointer;
+				border-radius: 6px;
+				font-size: 12px;
+			}
+			#compareHandle {
+				position: absolute;
+				top: 0;
+				bottom: 0;
+				left: var(--sliderX, 50%);
+				z-index: 1002;
+				width: 24px;
+				transform: translateX(-12px);
+				cursor: ew-resize;
+				display: none;
+			}
+			body.compare #compareHandle {
+				display: block;
+			}
+			#compareHandle::before {
+				content: "";
+				position: absolute;
+				top: 0;
+				bottom: 0;
+				left: 50%;
+				width: 2px;
+				transform: translateX(-1px);
+				background: rgba(255,255,255,0.9);
+				box-shadow: 0 0 0 1px rgba(0,0,0,0.25);
+			}
+			#compareHandle::after {
+				content: "";
+				position: absolute;
+				top: 50%;
+				left: 50%;
+				transform: translate(-50%, -50%);
+				width: 14px;
+				height: 14px;
+				border-radius: 50%;
+				background: rgba(255,255,255,0.9);
+				box-shadow: 0 0 0 2px rgba(0,0,0,0.3);
+			}
 
 			#instructions {
 				background: rgba(0,0,0,0.6);
@@ -192,15 +271,7 @@
 			if(location.host.includes('hf.space')) document.body.classList.add('nohf');
 		</script>
 		<div id="info">
-			<h3 class="nohf">WebGL 3D Gaussian Splat Viewer</h3>
-			<p>
-			<small class="nohf">
-				By <a href="https://twitter.com/antimatter15">Kevin Kwok</a>.
-				Code on
-				<a href="https://github.com/antimatter15/splat">Github</a
-				>.
-			</small>
-		</p>
+
 
 			<details>
 			<summary>Use mouse or arrow keys to navigate.</summary>
@@ -264,7 +335,10 @@ other
 				</div>
 			</div>
 		</div>
-		<canvas id="canvas"></canvas>
+		<button id="compareBtn">Side-by-Side Viewer</button>
+		<div id="compareHandle" aria-label="Compare handle" role="separator"></div>
+		<canvas id="canvasLeft"></canvas>
+		<canvas id="canvasRight"></canvas>
 
 		<div id="quality">
 			<span id="fps"></span>

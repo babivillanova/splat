@@ -773,94 +773,97 @@ async function main() {
         ),
     );
 
-    const canvas = document.getElementById("canvas");
+    const canvasLeft = document.getElementById("canvasLeft");
+    const canvasRight = document.getElementById("canvasRight");
+    const compareBtn = document.getElementById("compareBtn");
+    const compareHandle = document.getElementById("compareHandle");
     const fps = document.getElementById("fps");
     const camid = document.getElementById("camid");
 
     let projectionMatrix;
 
-    const gl = canvas.getContext("webgl2", {
-        antialias: false,
-    });
+    function initGL(canvas) {
+        const gl = canvas.getContext("webgl2", { antialias: false });
 
-    const vertexShader = gl.createShader(gl.VERTEX_SHADER);
-    gl.shaderSource(vertexShader, vertexShaderSource);
-    gl.compileShader(vertexShader);
-    if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS))
-        console.error(gl.getShaderInfoLog(vertexShader));
+        const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vertexShader, vertexShaderSource);
+        gl.compileShader(vertexShader);
+        if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS))
+            console.error(gl.getShaderInfoLog(vertexShader));
 
-    const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
-    gl.shaderSource(fragmentShader, fragmentShaderSource);
-    gl.compileShader(fragmentShader);
-    if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS))
-        console.error(gl.getShaderInfoLog(fragmentShader));
+        const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fragmentShader, fragmentShaderSource);
+        gl.compileShader(fragmentShader);
+        if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS))
+            console.error(gl.getShaderInfoLog(fragmentShader));
 
-    const program = gl.createProgram();
-    gl.attachShader(program, vertexShader);
-    gl.attachShader(program, fragmentShader);
-    gl.linkProgram(program);
-    gl.useProgram(program);
+        const program = gl.createProgram();
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
+        gl.useProgram(program);
 
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS))
-        console.error(gl.getProgramInfoLog(program));
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS))
+            console.error(gl.getProgramInfoLog(program));
 
-    gl.disable(gl.DEPTH_TEST); // Disable depth testing
+        gl.disable(gl.DEPTH_TEST);
+        gl.enable(gl.BLEND);
+        gl.blendFuncSeparate(gl.ONE_MINUS_DST_ALPHA, gl.ONE, gl.ONE_MINUS_DST_ALPHA, gl.ONE);
+        gl.blendEquationSeparate(gl.FUNC_ADD, gl.FUNC_ADD);
 
-    // Enable blending
-    gl.enable(gl.BLEND);
-    gl.blendFuncSeparate(
-        gl.ONE_MINUS_DST_ALPHA,
-        gl.ONE,
-        gl.ONE_MINUS_DST_ALPHA,
-        gl.ONE,
-    );
-    gl.blendEquationSeparate(gl.FUNC_ADD, gl.FUNC_ADD);
+        const u_projection = gl.getUniformLocation(program, "projection");
+        const u_viewport = gl.getUniformLocation(program, "viewport");
+        const u_focal = gl.getUniformLocation(program, "focal");
+        const u_view = gl.getUniformLocation(program, "view");
 
-    const u_projection = gl.getUniformLocation(program, "projection");
-    const u_viewport = gl.getUniformLocation(program, "viewport");
-    const u_focal = gl.getUniformLocation(program, "focal");
-    const u_view = gl.getUniformLocation(program, "view");
+        const triangleVertices = new Float32Array([-2, -2, 2, -2, 2, 2, -2, 2]);
+        const vertexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, triangleVertices, gl.STATIC_DRAW);
+        const a_position = gl.getAttribLocation(program, "position");
+        gl.enableVertexAttribArray(a_position);
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+        gl.vertexAttribPointer(a_position, 2, gl.FLOAT, false, 0, 0);
 
-    // positions
-    const triangleVertices = new Float32Array([-2, -2, 2, -2, 2, 2, -2, 2]);
-    const vertexBuffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, triangleVertices, gl.STATIC_DRAW);
-    const a_position = gl.getAttribLocation(program, "position");
-    gl.enableVertexAttribArray(a_position);
-    gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
-    gl.vertexAttribPointer(a_position, 2, gl.FLOAT, false, 0, 0);
+        const texture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        const u_textureLocation = gl.getUniformLocation(program, "u_texture");
+        gl.uniform1i(u_textureLocation, 0);
 
-    var texture = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, texture);
+        const indexBuffer = gl.createBuffer();
+        const a_index = gl.getAttribLocation(program, "index");
+        gl.enableVertexAttribArray(a_index);
+        gl.bindBuffer(gl.ARRAY_BUFFER, indexBuffer);
+        gl.vertexAttribIPointer(a_index, 1, gl.INT, false, 0, 0);
+        gl.vertexAttribDivisor(a_index, 1);
 
-    var u_textureLocation = gl.getUniformLocation(program, "u_texture");
-    gl.uniform1i(u_textureLocation, 0);
+        return { gl, program, u_projection, u_viewport, u_focal, u_view, texture, indexBuffer };
+    }
 
-    const indexBuffer = gl.createBuffer();
-    const a_index = gl.getAttribLocation(program, "index");
-    gl.enableVertexAttribArray(a_index);
-    gl.bindBuffer(gl.ARRAY_BUFFER, indexBuffer);
-    gl.vertexAttribIPointer(a_index, 1, gl.INT, false, 0, 0);
-    gl.vertexAttribDivisor(a_index, 1);
+    const ctxL = initGL(canvasLeft);
+    const ctxR = initGL(canvasRight);
 
     const resize = () => {
-        gl.uniform2fv(u_focal, new Float32Array([camera.fx, camera.fy]));
+        const isCompare = document.body.classList.contains("compare");
+        const targetW = Math.round(isCompare ? innerWidth : innerWidth / 2);
+        const targetH = Math.round(innerHeight);
 
         projectionMatrix = getProjectionMatrix(
             camera.fx,
             camera.fy,
-            innerWidth,
-            innerHeight,
+            targetW,
+            targetH,
         );
 
-        gl.uniform2fv(u_viewport, new Float32Array([innerWidth, innerHeight]));
-
-        gl.canvas.width = Math.round(innerWidth / downsample);
-        gl.canvas.height = Math.round(innerHeight / downsample);
-        gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
-
-        gl.uniformMatrix4fv(u_projection, false, projectionMatrix);
+        for (const ctx of [ctxL, ctxR]) {
+            const { gl, u_focal, u_viewport, u_projection } = ctx;
+            gl.uniform2fv(u_focal, new Float32Array([camera.fx, camera.fy]));
+            gl.uniform2fv(u_viewport, new Float32Array([targetW, targetH]));
+            gl.canvas.width = Math.round(targetW / downsample);
+            gl.canvas.height = Math.round(targetH / downsample);
+            gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+            gl.uniformMatrix4fv(u_projection, false, projectionMatrix);
+        }
     };
 
     window.addEventListener("resize", resize);
@@ -882,37 +885,34 @@ async function main() {
         } else if (e.data.texdata) {
             const { texdata, texwidth, texheight } = e.data;
             // console.log(texdata)
-            gl.bindTexture(gl.TEXTURE_2D, texture);
-            gl.texParameteri(
-                gl.TEXTURE_2D,
-                gl.TEXTURE_WRAP_S,
-                gl.CLAMP_TO_EDGE,
-            );
-            gl.texParameteri(
-                gl.TEXTURE_2D,
-                gl.TEXTURE_WRAP_T,
-                gl.CLAMP_TO_EDGE,
-            );
-            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-
-            gl.texImage2D(
-                gl.TEXTURE_2D,
-                0,
-                gl.RGBA32UI,
-                texwidth,
-                texheight,
-                0,
-                gl.RGBA_INTEGER,
-                gl.UNSIGNED_INT,
-                texdata,
-            );
-            gl.activeTexture(gl.TEXTURE0);
-            gl.bindTexture(gl.TEXTURE_2D, texture);
+            for (const ctx of [ctxL, ctxR]) {
+                const { gl, texture } = ctx;
+                gl.bindTexture(gl.TEXTURE_2D, texture);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+                gl.texImage2D(
+                    gl.TEXTURE_2D,
+                    0,
+                    gl.RGBA32UI,
+                    texwidth,
+                    texheight,
+                    0,
+                    gl.RGBA_INTEGER,
+                    gl.UNSIGNED_INT,
+                    texdata,
+                );
+                gl.activeTexture(gl.TEXTURE0);
+                gl.bindTexture(gl.TEXTURE_2D, texture);
+            }
         } else if (e.data.depthIndex) {
             const { depthIndex, viewProj } = e.data;
-            gl.bindBuffer(gl.ARRAY_BUFFER, indexBuffer);
-            gl.bufferData(gl.ARRAY_BUFFER, depthIndex, gl.DYNAMIC_DRAW);
+            for (const ctx of [ctxL, ctxR]) {
+                const { gl, indexBuffer } = ctx;
+                gl.bindBuffer(gl.ARRAY_BUFFER, indexBuffer);
+                gl.bufferData(gl.ARRAY_BUFFER, depthIndex, gl.DYNAMIC_DRAW);
+            }
             vertexCount = e.data.vertexCount;
         }
     };
@@ -1003,162 +1003,206 @@ async function main() {
     );
 
     let startX, startY, down;
-    canvas.addEventListener("mousedown", (e) => {
-        carousel = false;
-        e.preventDefault();
-        startX = e.clientX;
-        startY = e.clientY;
-        down = e.ctrlKey || e.metaKey ? 2 : 1;
-    });
-    canvas.addEventListener("contextmenu", (e) => {
-        carousel = false;
-        e.preventDefault();
-        startX = e.clientX;
-        startY = e.clientY;
-        down = 2;
-    });
-
-    canvas.addEventListener("mousemove", (e) => {
-        e.preventDefault();
-        if (down == 1) {
-            let inv = invert4(viewMatrix);
-            let dx = (5 * (e.clientX - startX)) / innerWidth;
-            let dy = (5 * (e.clientY - startY)) / innerHeight;
-            let d = 4;
-
-            inv = translate4(inv, 0, 0, d);
-            inv = rotate4(inv, dx, 0, 1, 0);
-            inv = rotate4(inv, -dy, 1, 0, 0);
-            inv = translate4(inv, 0, 0, -d);
-            // let postAngle = Math.atan2(inv[0], inv[10])
-            // inv = rotate4(inv, postAngle - preAngle, 0, 0, 1)
-            // console.log(postAngle)
-            viewMatrix = invert4(inv);
-
+    function bindPointer(canvas) {
+        canvas.addEventListener("mousedown", (e) => {
+            carousel = false;
+            e.preventDefault();
             startX = e.clientX;
             startY = e.clientY;
-        } else if (down == 2) {
-            let inv = invert4(viewMatrix);
-            // inv = rotateY(inv, );
-            // let preY = inv[13];
-            inv = translate4(
-                inv,
-                (-10 * (e.clientX - startX)) / innerWidth,
-                0,
-                (10 * (e.clientY - startY)) / innerHeight,
-            );
-            // inv[13] = preY;
-            viewMatrix = invert4(inv);
-
+            down = e.ctrlKey || e.metaKey ? 2 : 1;
+        });
+        canvas.addEventListener("contextmenu", (e) => {
+            carousel = false;
+            e.preventDefault();
             startX = e.clientX;
             startY = e.clientY;
-        }
-    });
-    canvas.addEventListener("mouseup", (e) => {
-        e.preventDefault();
-        down = false;
-        startX = 0;
-        startY = 0;
-    });
-
-    let altX = 0,
-        altY = 0;
-    canvas.addEventListener(
-        "touchstart",
-        (e) => {
+            down = 2;
+        });
+        canvas.addEventListener("mousemove", (e) => {
             e.preventDefault();
-            if (e.touches.length === 1) {
-                carousel = false;
-                startX = e.touches[0].clientX;
-                startY = e.touches[0].clientY;
-                down = 1;
-            } else if (e.touches.length === 2) {
-                // console.log('beep')
-                carousel = false;
-                startX = e.touches[0].clientX;
-                altX = e.touches[1].clientX;
-                startY = e.touches[0].clientY;
-                altY = e.touches[1].clientY;
-                down = 1;
-            }
-        },
-        { passive: false },
-    );
-    canvas.addEventListener(
-        "touchmove",
-        (e) => {
-            e.preventDefault();
-            if (e.touches.length === 1 && down) {
+            if (down == 1) {
                 let inv = invert4(viewMatrix);
-                let dx = (4 * (e.touches[0].clientX - startX)) / innerWidth;
-                let dy = (4 * (e.touches[0].clientY - startY)) / innerHeight;
-
+                let dx = (5 * (e.clientX - startX)) / innerWidth;
+                let dy = (5 * (e.clientY - startY)) / innerHeight;
                 let d = 4;
                 inv = translate4(inv, 0, 0, d);
-                // inv = translate4(inv,  -x, -y, -z);
-                // inv = translate4(inv,  x, y, z);
                 inv = rotate4(inv, dx, 0, 1, 0);
                 inv = rotate4(inv, -dy, 1, 0, 0);
                 inv = translate4(inv, 0, 0, -d);
-
                 viewMatrix = invert4(inv);
-
-                startX = e.touches[0].clientX;
-                startY = e.touches[0].clientY;
-            } else if (e.touches.length === 2) {
-                // alert('beep')
-                const dtheta =
-                    Math.atan2(startY - altY, startX - altX) -
-                    Math.atan2(
-                        e.touches[0].clientY - e.touches[1].clientY,
-                        e.touches[0].clientX - e.touches[1].clientX,
-                    );
-                const dscale =
-                    Math.hypot(startX - altX, startY - altY) /
-                    Math.hypot(
-                        e.touches[0].clientX - e.touches[1].clientX,
-                        e.touches[0].clientY - e.touches[1].clientY,
-                    );
-                const dx =
-                    (e.touches[0].clientX +
-                        e.touches[1].clientX -
-                        (startX + altX)) /
-                    2;
-                const dy =
-                    (e.touches[0].clientY +
-                        e.touches[1].clientY -
-                        (startY + altY)) /
-                    2;
+                startX = e.clientX;
+                startY = e.clientY;
+            } else if (down == 2) {
                 let inv = invert4(viewMatrix);
-                // inv = translate4(inv,  0, 0, d);
-                inv = rotate4(inv, dtheta, 0, 0, 1);
-
-                inv = translate4(inv, -dx / innerWidth, -dy / innerHeight, 0);
-
-                // let preY = inv[13];
-                inv = translate4(inv, 0, 0, 3 * (1 - dscale));
-                // inv[13] = preY;
-
+                inv = translate4(
+                    inv,
+                    (-10 * (e.clientX - startX)) / innerWidth,
+                    0,
+                    (10 * (e.clientY - startY)) / innerHeight,
+                );
                 viewMatrix = invert4(inv);
-
-                startX = e.touches[0].clientX;
-                altX = e.touches[1].clientX;
-                startY = e.touches[0].clientY;
-                altY = e.touches[1].clientY;
+                startX = e.clientX;
+                startY = e.clientY;
             }
-        },
-        { passive: false },
-    );
-    canvas.addEventListener(
-        "touchend",
-        (e) => {
+        });
+        canvas.addEventListener("mouseup", (e) => {
             e.preventDefault();
             down = false;
             startX = 0;
             startY = 0;
-        },
-        { passive: false },
-    );
+        });
+        canvas.addEventListener("mouseleave", () => {
+            down = false;
+        });
+    }
+    bindPointer(canvasLeft);
+    bindPointer(canvasRight);
+
+    let altX = 0,
+        altY = 0;
+    function bindTouch(canvas) {
+        canvas.addEventListener(
+            "touchstart",
+            (e) => {
+                e.preventDefault();
+                if (e.touches.length === 1) {
+                    carousel = false;
+                    startX = e.touches[0].clientX;
+                    startY = e.touches[0].clientY;
+                    down = 1;
+                } else if (e.touches.length === 2) {
+                    carousel = false;
+                    startX = e.touches[0].clientX;
+                    altX = e.touches[1].clientX;
+                    startY = e.touches[0].clientY;
+                    altY = e.touches[1].clientY;
+                    down = 1;
+                }
+            },
+            { passive: false },
+        );
+        canvas.addEventListener(
+            "touchmove",
+            (e) => {
+                e.preventDefault();
+                if (e.touches.length === 1 && down) {
+                    let inv = invert4(viewMatrix);
+                    let dx = (4 * (e.touches[0].clientX - startX)) / innerWidth;
+                    let dy = (4 * (e.touches[0].clientY - startY)) / innerHeight;
+                    let d = 4;
+                    inv = translate4(inv, 0, 0, d);
+                    inv = rotate4(inv, dx, 0, 1, 0);
+                    inv = rotate4(inv, -dy, 1, 0, 0);
+                    inv = translate4(inv, 0, 0, -d);
+                    viewMatrix = invert4(inv);
+                    startX = e.touches[0].clientX;
+                    startY = e.touches[0].clientY;
+                } else if (e.touches.length === 2) {
+                    const dtheta =
+                        Math.atan2(startY - altY, startX - altX) -
+                        Math.atan2(
+                            e.touches[0].clientY - e.touches[1].clientY,
+                            e.touches[0].clientX - e.touches[1].clientX,
+                        );
+                    const dscale =
+                        Math.hypot(startX - altX, startY - altY) /
+                        Math.hypot(
+                            e.touches[0].clientX - e.touches[1].clientX,
+                            e.touches[0].clientY - e.touches[1].clientY,
+                        );
+                    const dx =
+                        (e.touches[0].clientX +
+                            e.touches[1].clientX -
+                            (startX + altX)) /
+                        2;
+                    const dy =
+                        (e.touches[0].clientY +
+                            e.touches[1].clientY -
+                            (startY + altY)) /
+                        2;
+                    let inv = invert4(viewMatrix);
+                    inv = rotate4(inv, dtheta, 0, 0, 1);
+                    inv = translate4(inv, -dx / innerWidth, -dy / innerHeight, 0);
+                    inv = translate4(inv, 0, 0, 3 * (1 - dscale));
+                    viewMatrix = invert4(inv);
+                    startX = e.touches[0].clientX;
+                    altX = e.touches[1].clientX;
+                    startY = e.touches[0].clientY;
+                    altY = e.touches[1].clientY;
+                }
+            },
+            { passive: false },
+        );
+        canvas.addEventListener(
+            "touchend",
+            (e) => {
+                e.preventDefault();
+                down = false;
+                startX = 0;
+                startY = 0;
+            },
+            { passive: false },
+        );
+    }
+    bindTouch(canvasLeft);
+    bindTouch(canvasRight);
+
+    // Compare mode toggle & slider
+    function setSliderPercent(pct) {
+        document.body.style.setProperty("--sliderX", pct + "%");
+    }
+    if (compareBtn) {
+        compareBtn.addEventListener("click", () => {
+            document.body.classList.toggle("compare");
+            if (document.body.classList.contains("compare")) {
+                setSliderPercent(50);
+                compareBtn.textContent = "Slider Compare Viewer";
+            } else {
+                compareBtn.textContent = "Side-by-Side Viewer";
+            }
+            resize();
+        });
+        // Initialize label based on current mode
+        compareBtn.textContent = document.body.classList.contains("compare")
+            ? "Slider Compare Viewer"
+            : "Side-by-Side Viewer";
+    }
+
+    // Drag to move the vertical compare handle
+    let isDraggingCompare = false;
+    const getPctFromClientX = (clientX) => {
+        const rectLeft = 0;
+        const width = innerWidth;
+        const clamped = Math.max(0, Math.min(width, clientX - rectLeft));
+        return (clamped / width) * 100;
+    };
+    if (compareHandle) {
+        compareHandle.addEventListener("mousedown", (e) => {
+            isDraggingCompare = true;
+            setSliderPercent(getPctFromClientX(e.clientX));
+            e.preventDefault();
+        });
+        window.addEventListener("mousemove", (e) => {
+            if (!isDraggingCompare) return;
+            setSliderPercent(getPctFromClientX(e.clientX));
+        });
+        window.addEventListener("mouseup", () => {
+            isDraggingCompare = false;
+        });
+
+        compareHandle.addEventListener("touchstart", (e) => {
+            isDraggingCompare = true;
+            if (e.touches[0]) setSliderPercent(getPctFromClientX(e.touches[0].clientX));
+            e.preventDefault();
+        }, { passive: false });
+        window.addEventListener("touchmove", (e) => {
+            if (!isDraggingCompare) return;
+            if (e.touches[0]) setSliderPercent(getPctFromClientX(e.touches[0].clientX));
+        }, { passive: false });
+        window.addEventListener("touchend", () => {
+            isDraggingCompare = false;
+        });
+    }
 
     let jumpDelta = 0;
     let vertexCount = 0;
@@ -1357,11 +1401,17 @@ async function main() {
 
         if (vertexCount > 0) {
             document.getElementById("spinner").style.display = "none";
-            gl.uniformMatrix4fv(u_view, false, actualViewMatrix);
-            gl.clear(gl.COLOR_BUFFER_BIT);
-            gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, 4, vertexCount);
+            for (const ctx of [ctxL, ctxR]) {
+                const { gl, u_view } = ctx;
+                gl.uniformMatrix4fv(u_view, false, actualViewMatrix);
+                gl.clear(gl.COLOR_BUFFER_BIT);
+                gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, 4, vertexCount);
+            }
         } else {
-            gl.clear(gl.COLOR_BUFFER_BIT);
+            for (const ctx of [ctxL, ctxR]) {
+                const { gl } = ctx;
+                gl.clear(gl.COLOR_BUFFER_BIT);
+            }
             document.getElementById("spinner").style.display = "";
             start = Date.now() + 2000;
         }
@@ -1396,10 +1446,12 @@ async function main() {
                 projectionMatrix = getProjectionMatrix(
                     camera.fx / downsample,
                     camera.fy / downsample,
-                    canvas.width,
-                    canvas.height,
+                    canvasLeft.width,
+                    canvasLeft.height,
                 );
-                gl.uniformMatrix4fv(u_projection, false, projectionMatrix);
+                for (const ctx of [ctxL, ctxR]) {
+                    ctx.gl.uniformMatrix4fv(ctx.u_projection, false, projectionMatrix);
+                }
 
                 console.log("Loaded Cameras");
             };
